@@ -12,6 +12,7 @@ import chromadb
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from py_clob_client.client import ClobClient
@@ -181,6 +182,12 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # --- Models ---
@@ -359,9 +366,9 @@ async def search(req: SearchRequest):
 
 @app.get("/positions", response_model=list[Position])
 async def get_positions(
-    market: str | None = None,
-    eventId: str | None = None,
-    sizeThreshold: float | None = None,
+    market: Optional[str] = None,
+    eventId: Optional[str] = None,
+    sizeThreshold: Optional[float] = None,
     limit: int = Query(default=100, ge=1),
     offset: int = Query(default=0, ge=0),
     sortBy: Optional[PositionSortBy] = None,

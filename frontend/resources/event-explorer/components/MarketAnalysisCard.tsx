@@ -3,7 +3,7 @@ import type { MarketWithAction } from "../types";
 
 interface MarketAnalysisCardProps {
   market: MarketWithAction;
-  onClick: (marketId: string, marketTitle: string) => void;
+  onOpenMarket: (marketId: string, marketTitle: string) => void;
 }
 
 function formatVolume(value: number): string {
@@ -25,20 +25,18 @@ const actionLabel: Record<string, string> = {
   hold: "Hold",
 };
 
-export const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({ market, onClick }) => {
+export const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({ market, onOpenMarket }) => {
   const sortedOutcomes = [...market.outcomes].sort((a, b) => b.price - a.price).slice(0, 2);
 
   return (
     <div
       className="market-card-v2 cursor-pointer"
-      onClick={() => onClick(market.id, market.title)}
+      onClick={() => onOpenMarket(market.id, market.title)}
     >
-      {/* Title */}
       <h4 className="text-[14px] font-bold text-default leading-snug mb-3 line-clamp-2">
         {market.title}
       </h4>
 
-      {/* Outcomes */}
       <div className="space-y-2 mb-3">
         {sortedOutcomes.map((outcome) => (
           <div key={outcome.name} className="flex items-center justify-between gap-2">
@@ -52,7 +50,6 @@ export const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({ market, 
         ))}
       </div>
 
-      {/* Position info (if held) */}
       {market.position && (
         <div className="text-xs text-secondary mb-3 py-2 border-t border-[rgba(255,255,255,0.06)]">
           <span className="text-default font-medium">{market.position.shares}</span> shares @ {Math.round(market.position.avgPrice * 100)}%
@@ -62,13 +59,12 @@ export const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({ market, 
         </div>
       )}
 
-      {/* Footer: volume + action */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-secondary">{formatVolume(market.volume)}</span>
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onClick(market.id, market.title);
+            onOpenMarket(market.id, market.title);
           }}
           className={actionButtonClass[market.userAction]}
         >

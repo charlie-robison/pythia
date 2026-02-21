@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
+import httpx
 from openai import AsyncOpenAI
 
 from .analyzer import (
@@ -38,6 +39,21 @@ from .schemas import (
 )
 
 
+def _build_openai_client(api_key: str | None) -> AsyncOpenAI:
+    """Create an AsyncOpenAI client with compatibility fallback for httpx/openai version mismatches."""
+    try:
+        return AsyncOpenAI(api_key=api_key) if api_key else AsyncOpenAI()
+    except TypeError as exc:
+        if "proxies" not in str(exc):
+            raise
+        http_client = httpx.AsyncClient()
+        return (
+            AsyncOpenAI(api_key=api_key, http_client=http_client)
+            if api_key
+            else AsyncOpenAI(http_client=http_client)
+        )
+
+
 class RiskManagementAgent:
     """Prediction market risk management agent.
 
@@ -54,7 +70,7 @@ class RiskManagementAgent:
         api_key: str | None = None,
     ) -> None:
         self.config = config
-        self.client = AsyncOpenAI(api_key=api_key) if api_key else AsyncOpenAI()
+        self.client = _build_openai_client(api_key)
 
     async def run(self, raw_input: RiskManagementInput) -> RiskAnalysisOutput:
         """Execute the risk analysis pipeline.

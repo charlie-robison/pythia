@@ -8,6 +8,7 @@ source links.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Coroutine
 
@@ -66,6 +67,80 @@ def _extract_news_links(response: object) -> list[NewsLink]:
     return links
 
 
+def _extract_chat_text(response: object) -> str:
+    """Extract plain text from Chat Completions responses."""
+    choices = getattr(response, "choices", None)
+    if not choices:
+        return ""
+    message = getattr(choices[0], "message", None)
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        chunks: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    chunks.append(str(text))
+            else:
+                text = getattr(item, "text", None)
+                if text:
+                    chunks.append(str(text))
+        return "\n".join(chunks)
+    return str(content)
+
+
+def _extract_links_from_text(text: str) -> list[NewsLink]:
+    """Best-effort URL extraction for Chat Completions fallback."""
+    links: list[NewsLink] = []
+    seen_urls: set[str] = set()
+    for match in re.finditer(r"https?://[^\s\])\"'>]+", text):
+        url = match.group(0).rstrip(".,;:")
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        links.append(NewsLink(title=url, url=url))
+    return links
+
+
+async def _run_research_completion(
+    client: AsyncOpenAI,
+    prompt: str,
+    config: AgentConfig,
+) -> tuple[str, list[NewsLink]]:
+    """Run research using Responses API when available, else Chat Completions."""
+    if hasattr(client, "responses"):
+        response = await client.responses.create(
+            model=config.model,
+            tools=[
+                {
+                    "type": "web_search_preview",
+                    "search_context_size": config.search_context_size,
+                }
+            ],
+            input=prompt,
+        )
+        return response.output_text, _extract_news_links(response)
+
+    chat_response = await client.chat.completions.create(
+        model=config.model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a research assistant. "
+                    "Provide concise factual analysis and include source URLs "
+                    "inline when possible."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+    )
+    text = _extract_chat_text(chat_response).strip()
+    return text, _extract_links_from_text(text)
+
+
 # ---------------------------------------------------------------------------
 # Research functions
 # ---------------------------------------------------------------------------
@@ -84,27 +159,16 @@ async def research_main_event(
     )
 
     try:
-        response = await asyncio.wait_for(
-            client.responses.create(
-                model=config.model,
-                tools=[
-                    {
-                        "type": "web_search_preview",
-                        "search_context_size": config.search_context_size,
-                    }
-                ],
-                input=prompt,
-            ),
+        research_text, news_links = await asyncio.wait_for(
+            _run_research_completion(client, prompt, config),
             timeout=config.per_research_timeout,
         )
 
         return RawResearchResult(
             event_id="main",
             event_title=event.title,
-            research_text=response.output_text,
-            news_links=_extract_news_links(response)[
-                : config.max_news_links_per_event
-            ],
+            research_text=research_text,
+            news_links=news_links[: config.max_news_links_per_event],
             is_main_event=True,
         )
 
@@ -139,27 +203,16 @@ async def research_sub_event(
     )
 
     try:
-        response = await asyncio.wait_for(
-            client.responses.create(
-                model=config.model,
-                tools=[
-                    {
-                        "type": "web_search_preview",
-                        "search_context_size": config.search_context_size,
-                    }
-                ],
-                input=prompt,
-            ),
+        research_text, news_links = await asyncio.wait_for(
+            _run_research_completion(client, prompt, config),
             timeout=config.per_research_timeout,
         )
 
         return RawResearchResult(
             event_id=sub_event.id,
             event_title=sub_event.title,
-            research_text=response.output_text,
-            news_links=_extract_news_links(response)[
-                : config.max_news_links_per_event
-            ],
+            research_text=research_text,
+            news_links=news_links[: config.max_news_links_per_event],
             is_main_event=False,
         )
 

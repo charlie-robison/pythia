@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
+import httpx
 from openai import AsyncOpenAI
 
 from .config import AgentConfig, DEFAULT_CONFIG
@@ -30,6 +31,21 @@ from .schemas import (
 from .synthesizer import synthesize
 
 
+def _build_openai_client(api_key: str | None) -> AsyncOpenAI:
+    """Create an AsyncOpenAI client with compatibility fallback for httpx/openai version mismatches."""
+    try:
+        return AsyncOpenAI(api_key=api_key) if api_key else AsyncOpenAI()
+    except TypeError as exc:
+        if "proxies" not in str(exc):
+            raise
+        http_client = httpx.AsyncClient()
+        return (
+            AsyncOpenAI(api_key=api_key, http_client=http_client)
+            if api_key
+            else AsyncOpenAI(http_client=http_client)
+        )
+
+
 class ResearchAgent:
     """Polymarket Research Agent.
 
@@ -46,7 +62,7 @@ class ResearchAgent:
         api_key: str | None = None,
     ) -> None:
         self.config = config
-        self.client = AsyncOpenAI(api_key=api_key) if api_key else AsyncOpenAI()
+        self.client = _build_openai_client(api_key)
 
     async def run(self, input_data: ResearchInput) -> ResearchOutput:
         """Execute the full research pipeline with a hard timeout."""
@@ -169,31 +185,38 @@ class ResearchAgent:
 
         raw_map = {r.event_id: r for r in sub_event_results}
         synth_sub_map: dict[str, dict] = {}
-        for sa in synthesis_dict.get("sub_event_analyses", []):
-            synth_sub_map[sa.get("sub_event_id", "")] = sa
+        sub_analyses = synthesis_dict.get("sub_event_analyses")
+        if not isinstance(sub_analyses, list):
+            alt = synthesis_dict.get("sub_event_research")
+            sub_analyses = alt if isinstance(alt, list) else []
+        for sa in sub_analyses:
+            if not isinstance(sa, dict):
+                continue
+            sub_event_id = _as_str(sa.get("sub_event_id"))
+            if sub_event_id:
+                synth_sub_map[sub_event_id] = sa
 
         # Main event research
         main_research: MainEventResearch | None = None
         if input_data.main_event is not None:
-            synth_main = synthesis_dict.get("main_event_research", {})
+            synth_main_raw = synthesis_dict.get("main_event_research", {})
+            synth_main = synth_main_raw if isinstance(synth_main_raw, dict) else {}
+            main_summary = _as_str(synth_main.get("summary")) or (
+                main_event_result.research_text[:3000]
+                if main_event_result and main_event_result.research_text
+                else "No research available"
+            )
             main_research = MainEventResearch(
                 event_title=input_data.main_event.title,
-                summary=synth_main.get(
-                    "summary",
-                    (
-                        main_event_result.research_text[:3000]
-                        if main_event_result
-                        else "No research available"
-                    ),
-                ),
-                key_findings=synth_main.get("key_findings", [])[
+                summary=main_summary,
+                key_findings=_as_str_list(synth_main.get("key_findings"))[
                     : self.config.max_key_findings_per_event
                 ],
                 news_links=(
                     main_event_result.news_links if main_event_result else []
                 ),
-                sentiment=_parse_sentiment(synth_main.get("sentiment", "neutral")),
-                sentiment_rationale=synth_main.get("sentiment_rationale", ""),
+                sentiment=_parse_sentiment(_as_str(synth_main.get("sentiment")) or "neutral"),
+                sentiment_rationale=_as_str(synth_main.get("sentiment_rationale")),
             )
 
         # Sub-event research list
@@ -201,24 +224,22 @@ class ResearchAgent:
         for se in input_data.sub_events:
             raw = raw_map.get(se.id)
             synth = synth_sub_map.get(se.id, {})
+            summary = _as_str(synth.get("summary")) or (
+                raw.research_text[:3000]
+                if raw and not raw.error and raw.research_text
+                else "No research available"
+            )
             sub_research_list.append(
                 SubEventResearch(
                     sub_event_id=se.id,
                     sub_event_title=se.title,
-                    summary=synth.get(
-                        "summary",
-                        (
-                            raw.research_text[:3000]
-                            if raw and not raw.error
-                            else "No research available"
-                        ),
-                    ),
-                    key_findings=synth.get("key_findings", [])[
+                    summary=summary,
+                    key_findings=_as_str_list(synth.get("key_findings"))[
                         : self.config.max_key_findings_per_event
                     ],
                     news_links=raw.news_links if raw else [],
-                    sentiment=_parse_sentiment(synth.get("sentiment", "neutral")),
-                    sentiment_rationale=synth.get("sentiment_rationale", ""),
+                    sentiment=_parse_sentiment(_as_str(synth.get("sentiment")) or "neutral"),
+                    sentiment_rationale=_as_str(synth.get("sentiment_rationale")),
                 )
             )
 
@@ -226,21 +247,34 @@ class ResearchAgent:
         relationships: list[SubEventRelationship] | None = None
         if input_data.main_event is not None:
             relationships = []
-            for rel in synthesis_dict.get("relationships", []):
+            raw_relationships = synthesis_dict.get("relationships")
+            relationship_map: dict[str, dict] = {}
+            if isinstance(raw_relationships, list):
+                for rel in raw_relationships:
+                    if not isinstance(rel, dict):
+                        continue
+                    sub_event_id = _as_str(rel.get("sub_event_id"))
+                    if sub_event_id:
+                        relationship_map[sub_event_id] = rel
+
+            for se in input_data.sub_events:
+                rel = relationship_map.get(se.id, {})
                 relationships.append(
                     SubEventRelationship(
-                        sub_event_id=rel.get("sub_event_id", ""),
-                        sub_event_title=rel.get("sub_event_title", ""),
-                        relationship_summary=rel.get("relationship_summary", ""),
-                        influencing_news=rel.get("influencing_news", ""),
+                        sub_event_id=se.id,
+                        sub_event_title=_as_str(rel.get("sub_event_title")) or se.title,
+                        relationship_summary=_as_str(rel.get("relationship_summary")),
+                        influencing_news=_as_str(rel.get("influencing_news")),
                     )
                 )
+
+        synthesis_text = _as_str(synthesis_dict.get("synthesis")) or "Synthesis unavailable."
 
         return ResearchOutput(
             main_event_research=main_research,
             sub_event_research=sub_research_list,
             relationships=relationships,
-            synthesis=synthesis_dict.get("synthesis", "Synthesis unavailable."),
+            synthesis=synthesis_text,
             research_timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -256,3 +290,22 @@ def _parse_sentiment(value: str) -> SentimentRating:
         return SentimentRating(value.lower().strip())
     except ValueError:
         return SentimentRating.NEUTRAL
+
+
+def _as_str(value: object) -> str:
+    """Safely coerce values to a string while treating None as empty."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _as_str_list(value: object) -> list[str]:
+    """Safely coerce model output into a list of strings."""
+    if isinstance(value, list):
+        return [item for item in (_as_str(v).strip() for v in value) if item]
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    return []

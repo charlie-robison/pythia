@@ -1,4 +1,4 @@
-import { MCPServer, text, widget } from "mcp-use/server";
+import { MCPServer, object, text, widget } from "mcp-use/server";
 import { z } from "zod";
 
 const server = new MCPServer({
@@ -28,7 +28,7 @@ const positions = [
   { id: "pos-5", marketTitle: "Will AI pass the Turing Test by 2027?", outcome: "No", shares: 100, avgPrice: 0.55, currentPrice: 0.60, pnl: -5.0, pnlPercent: -9.09, marketSlug: "ai-turing-test-2027" },
 ];
 
-// ─── Mock flat markets data (for existing get-markets tool) ────────────────────
+// ─── Mock market data (used for event market typing) ───────────────────────────
 
 const markets = [
   { id: "mkt-1", title: "Who will Trump nominate as Fed Chair?", slug: "trump-fed-chair", category: "Politics", volume: 184018881, liquidity: 1250000, endDate: "2026-12-31T23:59:59Z", outcomes: [{ name: "Kevin Warsh", price: 0.93 }, { name: "Judy Shelton", price: 0.04 }], isResolved: false, subMarketCount: 23 },
@@ -129,32 +129,26 @@ const events: EventData[] = [
   },
 ];
 
-// ─── Helper: get all markets across all events ─────────────────────────────────
-
-function getAllEventMarkets(): MarketData[] {
-  return events.flatMap((e) => e.markets);
-}
-
 const incomingMarketSchema = z.object({
   id: z.string().optional(),
-  title: z.string().optional(),
-  question: z.string().optional(),
-  slug: z.string().optional(),
-  category: z.string().optional(),
-  volume: z.union([z.number(), z.string()]).optional(),
-  liquidity: z.union([z.number(), z.string()]).optional(),
-  endDate: z.string().optional(),
+  title: z.string().nullable().optional(),
+  question: z.string().nullable().optional(),
+  slug: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
+  volume: z.union([z.number(), z.string()]).nullable().optional(),
+  liquidity: z.union([z.number(), z.string()]).nullable().optional(),
+  endDate: z.string().nullable().optional(),
   outcomes: z.union([
     z.string(),
     z.array(z.string()),
     z.array(
       z.object({
         name: z.string(),
-        price: z.union([z.number(), z.string()]).optional(),
+        price: z.union([z.number(), z.string()]).nullable().optional(),
       })
     ),
-  ]).optional(),
-  outcomePrices: z.string().optional(),
+  ]).nullable().optional(),
+  outcomePrices: z.string().nullable().optional(),
   isResolved: z.boolean().optional(),
   subMarketCount: z.number().optional(),
 }).passthrough();
@@ -335,174 +329,6 @@ async function runResearch(input: ResearchRequest): Promise<ResearchResponse> {
   return await response.json() as ResearchResponse;
 }
 
-// ─── Helper: generate mock price history ───────────────────────────────────────
-
-function generatePriceHistory(basePrice: number, days: number = 30) {
-  const points: { timestamp: string; price: number }[] = [];
-  let price = basePrice * (0.7 + Math.random() * 0.3);
-  const now = Date.now();
-  for (let i = days; i >= 0; i--) {
-    const timestamp = new Date(now - i * 86400000).toISOString();
-    price = Math.max(0.01, Math.min(0.99, price + (Math.random() - 0.48) * 0.04));
-    points.push({ timestamp, price: Math.round(price * 1000) / 1000 });
-  }
-  // Ensure last point matches base price
-  points[points.length - 1].price = basePrice;
-  return points;
-}
-
-// ─── Helper: generate mock order book ──────────────────────────────────────────
-
-function generateOrderBook(midPrice: number) {
-  const asks: { price: number; shares: number; total: number }[] = [];
-  const bids: { price: number; shares: number; total: number }[] = [];
-
-  // Asks (above mid price, ascending)
-  for (let i = 1; i <= 4; i++) {
-    const price = Math.min(0.99, midPrice + i * 0.001);
-    const shares = Math.round(1000 + Math.random() * 20000);
-    asks.push({
-      price: Math.round(price * 1000) / 1000,
-      shares,
-      total: Math.round(shares * price * 100) / 100,
-    });
-  }
-
-  // Bids (below mid price, descending)
-  for (let i = 1; i <= 4; i++) {
-    const price = Math.max(0.01, midPrice - i * 0.001);
-    const shares = Math.round(1000 + Math.random() * 50000);
-    bids.push({
-      price: Math.round(price * 1000) / 1000,
-      shares,
-      total: Math.round(shares * price * 100) / 100,
-    });
-  }
-
-  return {
-    asks,
-    bids,
-    spread: Math.round((asks[0].price - bids[0].price) * 1000) / 1000,
-    lastTradePrice: midPrice,
-  };
-}
-
-// ─── Existing Tools ────────────────────────────────────────────────────────────
-
-server.tool(
-  {
-    name: "get-positions",
-    description: "Get the user's open Polymarket positions and display them in a visual portfolio widget",
-    schema: z.object({
-      outcome: z.enum(["all", "Yes", "No"]).optional().describe("Filter positions by outcome type"),
-    }),
-    widget: {
-      name: "polymarket-positions",
-      invoking: "Loading positions...",
-      invoked: "Positions loaded",
-    },
-  },
-  async ({ outcome }) => {
-    const filtered = outcome && outcome !== "all"
-      ? positions.filter((p) => p.outcome === outcome)
-      : positions;
-
-    const totalValue = filtered.reduce((sum, p) => sum + p.shares * p.currentPrice, 0);
-    const totalPnl = filtered.reduce((sum, p) => sum + p.pnl, 0);
-    const totalCost = filtered.reduce((sum, p) => sum + p.shares * p.avgPrice, 0);
-    const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-
-    return widget({
-      props: {
-        positions: filtered,
-        totalValue: Math.round(totalValue * 100) / 100,
-        totalPnl: Math.round(totalPnl * 100) / 100,
-        totalPnlPercent: Math.round(totalPnlPercent * 100) / 100,
-      },
-      output: text(
-        `Found ${filtered.length} positions. Total value: $${totalValue.toFixed(2)}, P&L: $${totalPnl.toFixed(2)} (${totalPnlPercent.toFixed(1)}%)`
-      ),
-    });
-  }
-);
-
-server.tool(
-  {
-    name: "get-markets",
-    description: "Search and browse Polymarket prediction markets with filtering and sorting",
-    schema: z.object({
-      query: z.string().optional().describe("Search query to filter markets by title"),
-      category: z.string().optional().describe("Filter by category (e.g. Politics, Crypto, Sports, Science, Economics)"),
-    }),
-    widget: {
-      name: "polymarket-markets",
-      invoking: "Searching markets...",
-      invoked: "Markets loaded",
-    },
-  },
-  async ({ query, category }) => {
-    let filtered = markets;
-
-    if (query) {
-      filtered = filtered.filter((m) =>
-        m.title.toLowerCase().includes(query.toLowerCase())
-      );
-    }
-    if (category) {
-      filtered = filtered.filter((m) =>
-        m.category.toLowerCase() === category.toLowerCase()
-      );
-    }
-
-    return widget({
-      props: {
-        markets: filtered,
-        query: query ?? undefined,
-        totalCount: filtered.length,
-      },
-      output: text(
-        `Found ${filtered.length} markets${query ? ` matching "${query}"` : ""}${category ? ` in ${category}` : ""}`
-      ),
-    });
-  }
-);
-
-server.tool(
-  {
-    name: "place-bet",
-    description: "Place a bet on a specific outcome in a Polymarket market",
-    schema: z.object({
-      marketId: z.string().describe("The market ID to bet on"),
-      outcome: z.string().describe("The outcome to bet on (e.g. 'Yes', 'No', or a named outcome)"),
-      amount: z.number().min(0.01).describe("Amount in dollars to bet"),
-    }),
-  },
-  async ({ marketId, outcome, amount }) => {
-    // Search both flat markets and event markets
-    let market = markets.find((m) => m.id === marketId);
-    if (!market) {
-      market = getAllEventMarkets().find((m) => m.id === marketId);
-    }
-    if (!market) {
-      return text(`Market not found: ${marketId}`);
-    }
-
-    const outcomeData = market.outcomes.find(
-      (o) => o.name.toLowerCase() === outcome.toLowerCase()
-    );
-    if (!outcomeData) {
-      return text(`Outcome "${outcome}" not found in market "${market.title}"`);
-    }
-
-    const shares = amount / outcomeData.price;
-    const potentialPayout = shares;
-
-    return text(
-      `Bet placed: $${amount.toFixed(2)} on "${outcome}" in "${market.title}" at ${Math.round(outcomeData.price * 100)}%. Shares: ${shares.toFixed(2)}, Potential payout: $${potentialPayout.toFixed(2)}`
-    );
-  }
-);
-
 // ─── New Tools: Event Explorer Flow ────────────────────────────────────────────
 
 server.tool(
@@ -557,169 +383,6 @@ server.tool(
         output: text(`Failed to reach search API: ${err instanceof Error ? err.message : String(err)}`),
       });
     }
-  }
-);
-
-server.tool(
-  {
-    name: "analyze-event",
-    description: "Get detailed analysis of a prediction market event, showing all its markets with buy/sell/hold recommendations based on the user's current positions",
-    schema: z.object({
-      eventId: z.string().describe("The event ID to analyze"),
-      mainEvent: incomingEventSchema.optional().describe("Main event from search results"),
-      relatedEvents: z.array(incomingEventSchema).default([]).describe("Related events from search results"),
-    }),
-    widget: {
-      name: "event-analysis",
-      invoking: "Analyzing event...",
-      invoked: "Analysis complete",
-    },
-  },
-  async ({ eventId, mainEvent, relatedEvents }) => {
-    const fallbackEvent = events.find((event) => event.id === eventId);
-    const selectedEvent: IncomingEvent | null = mainEvent ?? (fallbackEvent
-      ? {
-          id: fallbackEvent.id,
-          title: fallbackEvent.title,
-          description: fallbackEvent.description,
-          slug: fallbackEvent.slug,
-          category: fallbackEvent.category,
-          volume: fallbackEvent.volume,
-          markets: fallbackEvent.markets,
-        }
-      : null);
-
-    if (!selectedEvent) {
-      return text(`Event not found: ${eventId}`);
-    }
-
-    let analysis = selectedEvent.description ?? "Analysis unavailable.";
-    let researchError: string | null = null;
-
-    try {
-      const researchInput = buildResearchRequest(selectedEvent, relatedEvents);
-      const research = await runResearch(researchInput);
-      analysis = research.main_event_research?.summary ?? research.synthesis ?? analysis;
-    } catch (err) {
-      researchError = err instanceof Error ? err.message : String(err);
-    }
-
-    const rawMarkets: IncomingMarket[] = selectedEvent.markets.length > 0
-      ? selectedEvent.markets
-      : (fallbackEvent?.markets ?? []);
-
-    const normalizedMarkets = rawMarkets.map((market, index) =>
-      normalizeMarketForAnalysis(market, index, selectedEvent.category ?? "General")
-    );
-
-    // For each market, determine user action based on positions
-    const marketsWithAction = normalizedMarkets.map((market) => {
-      const position = positions.find((p) => p.marketSlug === market.slug);
-      let userAction: "buy" | "sell" | "hold" = "buy";
-      if (position) {
-        // If PnL is positive, suggest hold; if negative, suggest sell
-        userAction = position.pnl >= 0 ? "hold" : "sell";
-      }
-      return {
-        ...market,
-        userAction,
-        position: position
-          ? {
-              id: position.id,
-              outcome: position.outcome,
-              shares: position.shares,
-              avgPrice: position.avgPrice,
-              currentPrice: position.currentPrice,
-              pnl: position.pnl,
-              pnlPercent: position.pnlPercent,
-            }
-          : null,
-      };
-    });
-
-    return widget({
-      props: {
-        event: {
-          id: selectedEvent.id,
-          title: titleFromEvent(selectedEvent),
-          description: analysis,
-          slug: selectedEvent.slug ?? selectedEvent.id,
-          category: selectedEvent.category ?? "General",
-          volume: toNumber(selectedEvent.volume) ?? normalizedMarkets.reduce((sum, market) => sum + market.volume, 0),
-        },
-        markets: marketsWithAction,
-      },
-      output: text(
-        researchError
-          ? `Event: ${titleFromEvent(selectedEvent)} — showing ${marketsWithAction.length} markets. Research API failed: ${researchError}`
-          : `Event: ${titleFromEvent(selectedEvent)} — ${marketsWithAction.length} markets analyzed. ${marketsWithAction.filter((m) => m.userAction !== "buy").length} markets with existing positions.`
-      ),
-    });
-  }
-);
-
-server.tool(
-  {
-    name: "get-market-detail",
-    description: "Get detailed market view with price history chart and order book data for a specific market",
-    schema: z.object({
-      marketId: z.string().describe("The market ID to view in detail"),
-    }),
-    widget: {
-      name: "market-detail",
-      invoking: "Loading market detail...",
-      invoked: "Market detail loaded",
-    },
-  },
-  async ({ marketId }) => {
-    // Search across all event markets
-    let market: MarketData | undefined;
-    for (const event of events) {
-      market = event.markets.find((m) => m.id === marketId);
-      if (market) break;
-    }
-    // Also check flat markets
-    if (!market) {
-      market = markets.find((m) => m.id === marketId);
-    }
-    if (!market) {
-      return text(`Market not found: ${marketId}`);
-    }
-
-    const topOutcomePrice = market.outcomes[0]?.price ?? 0.5;
-    const priceHistory = generatePriceHistory(topOutcomePrice);
-    const orderBook = generateOrderBook(topOutcomePrice);
-
-    const position = positions.find((p) => p.marketSlug === market!.slug);
-    let userAction: "buy" | "sell" | "hold" = "buy";
-    if (position) {
-      userAction = position.pnl >= 0 ? "hold" : "sell";
-    }
-
-    return widget({
-      props: {
-        market: {
-          ...market,
-          priceHistory,
-          orderBook,
-        },
-        userAction,
-        position: position
-          ? {
-              id: position.id,
-              outcome: position.outcome,
-              shares: position.shares,
-              avgPrice: position.avgPrice,
-              currentPrice: position.currentPrice,
-              pnl: position.pnl,
-              pnlPercent: position.pnlPercent,
-            }
-          : null,
-      },
-      output: text(
-        `Market: ${market.title} — ${market.outcomes.map((o) => `${o.name}: ${Math.round(o.price * 100)}%`).join(", ")}. Spread: ${orderBook.spread}¢`
-      ),
-    });
   }
 );
 
