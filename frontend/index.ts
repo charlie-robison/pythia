@@ -75,6 +75,13 @@ server.tool(
   }
 );
 
+// Get postions
+// Get Markets
+// 
+
+// Pull a market
+// Allow user to make trades on a market.
+
 server.tool(
   {
     name: "get-fruit-details",

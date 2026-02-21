@@ -115,3 +115,21 @@ a {
   z-index: 3;
   transform: translateZ(0);
 }
+
+/* ---------- Polymarket Position Card ---------- */
+.position-card {
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- Polymarket Market Card ---------- */
+.market-card {
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
