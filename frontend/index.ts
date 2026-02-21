@@ -135,6 +135,206 @@ function getAllEventMarkets(): MarketData[] {
   return events.flatMap((e) => e.markets);
 }
 
+const incomingMarketSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  question: z.string().optional(),
+  slug: z.string().optional(),
+  category: z.string().optional(),
+  volume: z.union([z.number(), z.string()]).optional(),
+  liquidity: z.union([z.number(), z.string()]).optional(),
+  endDate: z.string().optional(),
+  outcomes: z.union([
+    z.string(),
+    z.array(z.string()),
+    z.array(
+      z.object({
+        name: z.string(),
+        price: z.union([z.number(), z.string()]).optional(),
+      })
+    ),
+  ]).optional(),
+  outcomePrices: z.string().optional(),
+  isResolved: z.boolean().optional(),
+  subMarketCount: z.number().optional(),
+}).passthrough();
+
+const incomingEventSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  slug: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
+  volume: z.union([z.number(), z.string()]).nullable().optional(),
+  markets: z.array(incomingMarketSchema).default([]),
+}).passthrough();
+
+type IncomingMarket = z.infer<typeof incomingMarketSchema>;
+type IncomingEvent = z.infer<typeof incomingEventSchema>;
+
+interface ResearchRequest {
+  main_event?: {
+    title: string;
+    description?: string;
+  };
+  sub_events: Array<{
+    title: string;
+    description?: string;
+  }>;
+}
+
+interface ResearchResponse {
+  main_event_research?: {
+    summary?: string | null;
+  } | null;
+  synthesis?: string | null;
+}
+
+interface NormalizedMarket {
+  id: string;
+  title: string;
+  slug: string;
+  category: string;
+  volume: number;
+  liquidity: number;
+  endDate: string;
+  outcomes: Array<{ name: string; price: number }>;
+  isResolved: boolean;
+  subMarketCount?: number;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item).trim()).filter(Boolean);
+    }
+  } catch {
+    // Fall through to CSV parsing
+  }
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function parseNumberList(value: unknown): number[] {
+  return parseStringList(value)
+    .map((item) => Number.parseFloat(item))
+    .filter((num) => Number.isFinite(num));
+}
+
+function normalizeOutcomes(market: IncomingMarket): Array<{ name: string; price: number }> {
+  if (Array.isArray(market.outcomes) && market.outcomes.length > 0) {
+    if (typeof market.outcomes[0] === "string") {
+      const names = market.outcomes as string[];
+      const prices = parseNumberList(market.outcomePrices);
+      return names.map((name, idx) => ({ name, price: prices[idx] ?? 0.5 }));
+    }
+
+    const outcomeObjs = market.outcomes as Array<{ name: string; price?: number | string }>;
+    const fallbackPrices = parseNumberList(market.outcomePrices);
+    return outcomeObjs.map((outcome, idx) => ({
+      name: outcome.name,
+      price: toNumber(outcome.price) ?? fallbackPrices[idx] ?? 0.5,
+    }));
+  }
+
+  const names = parseStringList(market.outcomes);
+  if (names.length > 0) {
+    const prices = parseNumberList(market.outcomePrices);
+    return names.map((name, idx) => ({ name, price: prices[idx] ?? 0.5 }));
+  }
+
+  return [
+    { name: "Yes", price: 0.5 },
+    { name: "No", price: 0.5 },
+  ];
+}
+
+function normalizeMarketForAnalysis(market: IncomingMarket, index: number, fallbackCategory: string): NormalizedMarket {
+  return {
+    id: market.id ?? `market-${index + 1}`,
+    title: market.title ?? market.question ?? "Untitled market",
+    slug: market.slug ?? market.id ?? `market-${index + 1}`,
+    category: market.category ?? fallbackCategory,
+    volume: toNumber(market.volume) ?? 0,
+    liquidity: toNumber(market.liquidity) ?? 0,
+    endDate: market.endDate ?? new Date().toISOString(),
+    outcomes: normalizeOutcomes(market),
+    isResolved: market.isResolved ?? false,
+    subMarketCount: market.subMarketCount,
+  };
+}
+
+function titleFromEvent(event: IncomingEvent): string {
+  const directTitle = event.title?.trim();
+  if (directTitle) return directTitle;
+  const firstMarket = event.markets[0];
+  const marketTitle = firstMarket?.title?.trim() || firstMarket?.question?.trim();
+  if (marketTitle) return marketTitle;
+  return event.id;
+}
+
+function buildResearchRequest(mainEvent: IncomingEvent, relatedEvents: IncomingEvent[]): ResearchRequest {
+  const subEvents: ResearchRequest["sub_events"] = relatedEvents
+    .map((event) => {
+      const title = titleFromEvent(event);
+      const description = event.description ?? undefined;
+      return description ? { title, description } : { title };
+    })
+    .filter((event) => event.title.trim().length > 0);
+
+  if (subEvents.length === 0) {
+    const derived = mainEvent.markets
+      .map((market) => ({
+        title: market.question ?? market.title ?? "",
+      }))
+      .filter((market) => market.title.trim().length > 0)
+      .slice(0, 5)
+      .map((market) => ({ title: market.title }));
+
+    subEvents.push(...derived);
+  }
+
+  if (subEvents.length === 0) {
+    subEvents.push({ title: `${titleFromEvent(mainEvent)} market outlook` });
+  }
+
+  return {
+    main_event: {
+      title: titleFromEvent(mainEvent),
+      description: mainEvent.description ?? undefined,
+    },
+    sub_events: subEvents,
+  };
+}
+
+async function runResearch(input: ResearchRequest): Promise<ResearchResponse> {
+  const RESEARCH_API_URL = process.env.RESEARCH_API_URL || "http://localhost:8000";
+  const response = await fetch(`${RESEARCH_API_URL}/research`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Research API error: ${response.status}`);
+  }
+
+  return await response.json() as ResearchResponse;
+}
+
 // ─── Helper: generate mock price history ───────────────────────────────────────
 
 function generatePriceHistory(basePrice: number, days: number = 30) {
@@ -348,7 +548,7 @@ server.tool(
           query,
         },
         output: text(
-          `Found ${data.results.length} markets matching "${query}"${data.expanded_queries.length > 0 ? ` (also searched: ${data.expanded_queries.join(", ")})` : ""}`
+          `Found ${data.results.length} events matching "${query}"${data.expanded_queries.length > 0 ? ` (also searched: ${data.expanded_queries.join(", ")})` : ""}`
         ),
       });
     } catch (err) {
@@ -366,6 +566,8 @@ server.tool(
     description: "Get detailed analysis of a prediction market event, showing all its markets with buy/sell/hold recommendations based on the user's current positions",
     schema: z.object({
       eventId: z.string().describe("The event ID to analyze"),
+      mainEvent: incomingEventSchema.optional().describe("Main event from search results"),
+      relatedEvents: z.array(incomingEventSchema).default([]).describe("Related events from search results"),
     }),
     widget: {
       name: "event-analysis",
@@ -373,22 +575,53 @@ server.tool(
       invoked: "Analysis complete",
     },
   },
-  async ({ eventId }) => {
-    const event = events.find((e) => e.id === eventId);
-    if (!event) {
+  async ({ eventId, mainEvent, relatedEvents }) => {
+    const fallbackEvent = events.find((event) => event.id === eventId);
+    const selectedEvent: IncomingEvent | null = mainEvent ?? (fallbackEvent
+      ? {
+          id: fallbackEvent.id,
+          title: fallbackEvent.title,
+          description: fallbackEvent.description,
+          slug: fallbackEvent.slug,
+          category: fallbackEvent.category,
+          volume: fallbackEvent.volume,
+          markets: fallbackEvent.markets,
+        }
+      : null);
+
+    if (!selectedEvent) {
       return text(`Event not found: ${eventId}`);
     }
 
+    let analysis = selectedEvent.description ?? "Analysis unavailable.";
+    let researchError: string | null = null;
+
+    try {
+      const researchInput = buildResearchRequest(selectedEvent, relatedEvents);
+      const research = await runResearch(researchInput);
+      analysis = research.main_event_research?.summary ?? research.synthesis ?? analysis;
+    } catch (err) {
+      researchError = err instanceof Error ? err.message : String(err);
+    }
+
+    const rawMarkets: IncomingMarket[] = selectedEvent.markets.length > 0
+      ? selectedEvent.markets
+      : (fallbackEvent?.markets ?? []);
+
+    const normalizedMarkets = rawMarkets.map((market, index) =>
+      normalizeMarketForAnalysis(market, index, selectedEvent.category ?? "General")
+    );
+
     // For each market, determine user action based on positions
-    const marketsWithAction = event.markets.map((m) => {
-      const position = positions.find((p) => p.marketSlug === m.slug);
+    const marketsWithAction = normalizedMarkets.map((market) => {
+      const position = positions.find((p) => p.marketSlug === market.slug);
       let userAction: "buy" | "sell" | "hold" = "buy";
       if (position) {
         // If PnL is positive, suggest hold; if negative, suggest sell
         userAction = position.pnl >= 0 ? "hold" : "sell";
       }
       return {
-        ...m,
+        ...market,
         userAction,
         position: position
           ? {
@@ -407,17 +640,19 @@ server.tool(
     return widget({
       props: {
         event: {
-          id: event.id,
-          title: event.title,
-          description: event.description,
-          slug: event.slug,
-          category: event.category,
-          volume: event.volume,
+          id: selectedEvent.id,
+          title: titleFromEvent(selectedEvent),
+          description: analysis,
+          slug: selectedEvent.slug ?? selectedEvent.id,
+          category: selectedEvent.category ?? "General",
+          volume: toNumber(selectedEvent.volume) ?? normalizedMarkets.reduce((sum, market) => sum + market.volume, 0),
         },
         markets: marketsWithAction,
       },
       output: text(
-        `Event: ${event.title} — ${event.markets.length} markets analyzed. ${marketsWithAction.filter((m) => m.userAction !== "buy").length} markets with existing positions.`
+        researchError
+          ? `Event: ${titleFromEvent(selectedEvent)} — showing ${marketsWithAction.length} markets. Research API failed: ${researchError}`
+          : `Event: ${titleFromEvent(selectedEvent)} — ${marketsWithAction.length} markets analyzed. ${marketsWithAction.filter((m) => m.userAction !== "buy").length} markets with existing positions.`
       ),
     });
   }

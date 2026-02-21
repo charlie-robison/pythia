@@ -3,7 +3,7 @@ import type { MarketResult } from "../types";
 
 interface EventCardProps {
   market: MarketResult;
-  onAnalyze: (marketId: string, question: string) => void;
+  onAnalyze: (event: MarketResult) => void;
   isMain?: boolean;
 }
 
@@ -16,9 +16,47 @@ function formatVolume(value: number): string {
 
 function parseOutcomes(outcomes?: string | null, prices?: string | null): { name: string; price: number }[] {
   if (!outcomes || !prices) return [];
-  const names = outcomes.split(",").map((s) => s.trim());
-  const priceVals = prices.split(",").map((s) => parseFloat(s.trim()));
+  const names = parseStringList(outcomes);
+  const priceVals = parseNumberList(prices);
   return names.map((name, i) => ({ name, price: priceVals[i] ?? 0 }));
+}
+
+function parseStringList(value?: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item).trim()).filter(Boolean);
+    }
+  } catch {
+    // Fall through to CSV parsing
+  }
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function parseNumberList(value?: string | null): number[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => Number(item)).filter((num) => Number.isFinite(num));
+    }
+  } catch {
+    // Fall through to CSV parsing
+  }
+  return value
+    .split(",")
+    .map((s) => Number.parseFloat(s.trim()))
+    .filter((num) => Number.isFinite(num));
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 function formatDate(dateStr?: string | null): string | null {
@@ -31,8 +69,15 @@ function formatDate(dateStr?: string | null): string | null {
 }
 
 export const EventCard: React.FC<EventCardProps> = ({ market, onAnalyze, isMain = false }) => {
-  const parsed = parseOutcomes(market.outcomes, market.outcomePrices);
-  const endDateStr = formatDate(market.endDate);
+  const primaryMarket = market.markets?.[0];
+  const parsed = parseOutcomes(
+    market.outcomes ?? primaryMarket?.outcomes,
+    market.outcomePrices ?? primaryMarket?.outcomePrices
+  );
+  const endDateStr = formatDate(market.endDate ?? primaryMarket?.endDate);
+  const title = market.title || market.question || "Untitled Event";
+  const volume = market.volumeNum ?? toNumber(market.volume);
+  const liquidity = market.liquidityNum ?? toNumber(market.liquidity);
 
   return (
     <div className={isMain ? "event-card event-card--main" : "event-card"}>
@@ -51,7 +96,7 @@ export const EventCard: React.FC<EventCardProps> = ({ market, onAnalyze, isMain 
 
       {/* Question */}
       <h3 className={`font-bold text-default leading-snug ${isMain ? "text-lg mb-2" : "text-[15px] mb-2"}`}>
-        {market.question || "Untitled Market"}
+        {title}
       </h3>
 
       {/* Outcomes with prices */}
@@ -79,11 +124,11 @@ export const EventCard: React.FC<EventCardProps> = ({ market, onAnalyze, isMain 
 
       {/* Stats row */}
       <div className="flex items-center gap-4 mb-4 text-xs text-secondary">
-        {market.volumeNum != null && market.volumeNum > 0 && (
-          <span>{formatVolume(market.volumeNum)} vol</span>
+        {volume != null && volume > 0 && (
+          <span>{formatVolume(volume)} vol</span>
         )}
-        {market.liquidityNum != null && market.liquidityNum > 0 && (
-          <span>{formatVolume(market.liquidityNum)} liq</span>
+        {liquidity != null && liquidity > 0 && (
+          <span>{formatVolume(liquidity)} liq</span>
         )}
         {endDateStr && <span>Ends {endDateStr}</span>}
         {isMain && (
@@ -97,7 +142,7 @@ export const EventCard: React.FC<EventCardProps> = ({ market, onAnalyze, isMain 
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onAnalyze(market.id, market.question || "");
+          onAnalyze(market);
         }}
         className="analyze-button"
       >

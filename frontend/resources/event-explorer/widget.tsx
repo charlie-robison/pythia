@@ -3,7 +3,7 @@ import React from "react";
 import "../styles.css";
 import { EventCard } from "./components/EventCard";
 import { EventExplorerSkeleton } from "./components/EventExplorerSkeleton";
-import type { EventExplorerProps } from "./types";
+import type { EventExplorerProps, MarketResult } from "./types";
 import { propsSchema } from "./types";
 
 export const widgetMetadata: WidgetMetadata = {
@@ -40,8 +40,44 @@ const EventExplorer: React.FC = () => {
 
   const { results, expandedQueries, query } = props;
 
-  const handleAnalyze = (marketId: string, _question: string) => {
-    callTool("analyze-event", { eventId: marketId });
+  const handleAnalyze = (selectedEvent: MarketResult) => {
+    const selectedMarkets = (selectedEvent.markets ?? []).map((market) => ({
+      id: market.id,
+      title: market.title ?? null,
+      question: market.question ?? null,
+      slug: market.slug ?? null,
+      category: market.category ?? null,
+      volume: market.volume ?? null,
+      liquidity: market.liquidity ?? null,
+      endDate: market.endDate ?? null,
+      outcomes: market.outcomes ?? null,
+      outcomePrices: market.outcomePrices ?? null,
+    }));
+
+    const relatedEvents = results
+      .filter((result) => result.id !== selectedEvent.id)
+      .slice(0, 8)
+      .map((result) => ({
+        id: result.id,
+        title: result.title ?? result.question ?? null,
+        description: result.description ?? null,
+      }));
+
+    const mainEvent = {
+      id: selectedEvent.id,
+      title: selectedEvent.title ?? selectedEvent.question ?? null,
+      description: selectedEvent.description ?? null,
+      slug: selectedEvent.slug ?? null,
+      category: selectedEvent.category ?? null,
+      volume: selectedEvent.volume ?? selectedEvent.volumeNum ?? null,
+      markets: selectedMarkets,
+    };
+
+    callTool("analyze-event", {
+      eventId: selectedEvent.id,
+      mainEvent,
+      relatedEvents,
+    });
   };
 
   const mainResult = results[0] ?? null;

@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
 from enum import Enum
+from typing import Optional
 
 import chromadb
 import httpx
@@ -11,6 +14,11 @@ from fastapi import FastAPI, Query
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from py_clob_client.client import ClobClient
+
+try:
+    from research_agent import AgentConfig, ResearchAgent, ResearchInput, ResearchOutput
+except ImportError:
+    from server.research_agent import AgentConfig, ResearchAgent, ResearchInput, ResearchOutput
 
 load_dotenv()
 
@@ -30,7 +38,7 @@ collection = chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"},
 )
 
-openai_client = AsyncOpenAI()
+openai_client: Optional[AsyncOpenAI] = None
 clob_client = ClobClient("https://clob.polymarket.com")
 
 GAMMA_API = "https://gamma-api.polymarket.com/events"
@@ -153,28 +161,28 @@ class SearchRequest(BaseModel):
 
 
 class MarketInfo(BaseModel):
-    id: str | None = None
-    question: str | None = None
-    outcomes: str | None = None
-    outcomePrices: str | None = None
-    conditionId: str | None = None
-    slug: str | None = None
-    active: bool | None = None
-    closed: bool | None = None
-    volume: str | None = None
-    liquidity: str | None = None
+    id: Optional[str] = None
+    question: Optional[str] = None
+    outcomes: Optional[str] = None
+    outcomePrices: Optional[str] = None
+    conditionId: Optional[str] = None
+    slug: Optional[str] = None
+    active: Optional[bool] = None
+    closed: Optional[bool] = None
+    volume: Optional[str] = None
+    liquidity: Optional[str] = None
 
 
 class EventResult(BaseModel):
     id: str
-    title: str | None = None
-    category: str | None = None
-    slug: str | None = None
-    volume: float | None = None
-    liquidity: float | None = None
-    endDate: str | None = None
-    active: bool | None = None
-    closed: bool | None = None
+    title: Optional[str] = None
+    category: Optional[str] = None
+    slug: Optional[str] = None
+    volume: Optional[float] = None
+    liquidity: Optional[float] = None
+    endDate: Optional[str] = None
+    active: Optional[bool] = None
+    closed: Optional[bool] = None
     markets: list[MarketInfo] = []
     relevance_score: float
 
@@ -202,29 +210,38 @@ class PositionSortDirection(str, Enum):
 
 
 class Position(BaseModel):
-    asset: str | None = None
-    conditionId: str | None = None
-    size: float | None = None
-    avgPrice: float | None = None
-    initialValue: float | None = None
-    currentValue: float | None = None
-    cashPnl: float | None = None
-    percentPnl: float | None = None
-    curPrice: float | None = None
-    title: str | None = None
-    slug: str | None = None
-    outcome: str | None = None
-    outcomeIndex: int | None = None
-    endDate: str | None = None
-    market: str | None = None
-    eventId: str | None = None
-    redeemable: bool | None = None
-    mergeable: bool | None = None
+    asset: Optional[str] = None
+    conditionId: Optional[str] = None
+    size: Optional[float] = None
+    avgPrice: Optional[float] = None
+    initialValue: Optional[float] = None
+    currentValue: Optional[float] = None
+    cashPnl: Optional[float] = None
+    percentPnl: Optional[float] = None
+    curPrice: Optional[float] = None
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    outcome: Optional[str] = None
+    outcomeIndex: Optional[int] = None
+    endDate: Optional[str] = None
+    market: Optional[str] = None
+    eventId: Optional[str] = None
+    redeemable: Optional[bool] = None
+    mergeable: Optional[bool] = None
 
 
 # --- Query expansion ---
 
 async def expand_query(query: str) -> list[str]:
+    global openai_client
+
+    if openai_client is None:
+        try:
+            openai_client = AsyncOpenAI()
+        except Exception:
+            logger.exception("OpenAI client initialization failed; skipping query expansion")
+            return []
+
     try:
         resp = await openai_client.chat.completions.create(
             model="gpt-4.1-mini",
@@ -253,10 +270,17 @@ async def expand_query(query: str) -> list[str]:
 async def search(req: SearchRequest):
     expanded = await expand_query(req.query)
     all_queries = [req.query] + expanded
+    total_events = collection.count()
+    n_results = max(1, req.n_results)
+
+    if total_events == 0:
+        return SearchResponse(results=[], expanded_queries=expanded)
+
+    n_results = min(n_results, total_events)
 
     results = collection.query(
         query_texts=all_queries,
-        n_results=req.n_results,
+        n_results=n_results,
         include=["metadatas", "distances"],
     )
 
@@ -270,18 +294,22 @@ async def search(req: SearchRequest):
                 best[eid] = (dist, meta)
 
     # Sort by distance ascending, take top n
-    sorted_results = sorted(best.items(), key=lambda x: x[1][0])[:req.n_results]
+    sorted_results = sorted(best.items(), key=lambda x: x[1][0])[:n_results]
 
     event_results = []
     for eid, (dist, meta) in sorted_results:
         score = 1.0 - (dist / 2.0)
-        markets_raw = meta.pop("markets", "[]")
-        markets = json.loads(markets_raw)
+        meta_safe = dict(meta or {})
+        markets_raw = meta_safe.pop("markets", "[]")
+        try:
+            markets = json.loads(markets_raw) if isinstance(markets_raw, str) else []
+        except json.JSONDecodeError:
+            markets = []
         event_results.append(
             EventResult(
                 id=eid, relevance_score=score,
                 markets=[MarketInfo(**m) for m in markets],
-                **meta,
+                **meta_safe,
             )
         )
 
@@ -291,15 +319,15 @@ async def search(req: SearchRequest):
 @app.get("/positions/{user}", response_model=list[Position])
 async def get_positions(
     user: str,
-    market: str | None = None,
-    eventId: str | None = None,
-    sizeThreshold: float | None = None,
-    redeemable: bool | None = None,
-    mergeable: bool | None = None,
+    market: Optional[str] = None,
+    eventId: Optional[str] = None,
+    sizeThreshold: Optional[float] = None,
+    redeemable: Optional[bool] = None,
+    mergeable: Optional[bool] = None,
     limit: int = Query(default=100, ge=1),
     offset: int = Query(default=0, ge=0),
-    sortBy: PositionSortBy | None = None,
-    sortDirection: PositionSortDirection | None = None,
+    sortBy: Optional[PositionSortBy] = None,
+    sortDirection: Optional[PositionSortDirection] = None,
 ):
     params: dict = {"user": user, "limit": limit, "offset": offset}
     if market is not None:
@@ -325,5 +353,21 @@ async def get_positions(
 
 
 @app.get("/")
+def root():
+    return {"status": "ok"}
+
+
+@app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/research", response_model=ResearchOutput)
+async def research(
+    body: ResearchInput,
+    model: str = Query("gpt-5.1", description="OpenAI model to use"),
+    timeout: float = Query(180.0, description="Total pipeline timeout in seconds"),
+) -> ResearchOutput:
+    config = AgentConfig(model=model, total_timeout=timeout)
+    agent = ResearchAgent(config=config)
+    return await agent.run(body)

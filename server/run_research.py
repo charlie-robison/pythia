@@ -1,9 +1,9 @@
 """CLI entry point for testing the Polymarket research agent.
 
 Usage:
-    python run.py                              # Built-in sample input
-    python run.py --input path/to/input.json   # Custom JSON file
-    echo '{"sub_events": [...]}' | python run.py --stdin
+    python run_research.py                              # Built-in sample input
+    python run_research.py --input path/to/input.json   # Custom JSON file
+    echo '{"sub_events": [...]}' | python run_research.py --stdin
 """
 
 from __future__ import annotations
@@ -15,7 +15,10 @@ import sys
 
 from dotenv import load_dotenv
 
-from research_agent import AgentConfig, ResearchAgent, ResearchInput
+try:
+    from research_agent import AgentConfig, ResearchAgent, ResearchInput
+except ImportError:
+    from server.research_agent import AgentConfig, ResearchAgent, ResearchInput
 
 # ---------------------------------------------------------------------------
 # Sample input for quick testing
