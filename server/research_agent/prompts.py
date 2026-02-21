@@ -16,10 +16,14 @@ DESCRIPTION: {description}
 
 Instructions:
 1. Search for the LATEST news, analysis, and developments related to this \
-event.  Prioritise information from the last 30 days.
+event.  CRITICAL: Focus on news from the last 24 hours first, then expand \
+to the last 48 hours only if needed.  Always include "today" or "latest" \
+in your search queries to surface the most recent results.  Discard any \
+source older than 7 days unless it provides essential background context \
+that no newer source covers.
 2. Cover:
+   - Breaking or very recent developments (last 24-48 hours)
    - Current state of affairs and background context
-   - Recent major developments or turning points
    - Key factors and variables that could change the outcome
    - Expert opinions, polls, forecasts, or official statements
    - Upcoming catalysts, deadlines, or scheduled events
@@ -38,10 +42,14 @@ DESCRIPTION: {description}
 
 Instructions:
 1. Search for the LATEST news and data specifically relevant to this \
-question.  Prioritise information from the last 30 days.
+question.  CRITICAL: Focus on news from the last 24 hours first, then \
+expand to the last 48 hours only if needed.  Always include "today" or \
+"latest" in your search queries to surface the most recent results.  \
+Discard any source older than 7 days unless it provides essential context \
+that no newer source covers.
 2. Cover:
+   - Breaking or very recent developments (last 24-48 hours)
    - Direct evidence for and against each possible outcome
-   - Recent developments that shift the probabilities
    - Quantitative data where available (polls, statistics, forecasts)
    - Expert or official positions on this specific question
    - Upcoming events or deadlines that could be decisive
