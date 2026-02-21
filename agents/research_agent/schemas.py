@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -26,13 +27,24 @@ class MainEvent(BaseModel):
 class SubEvent(BaseModel):
     """A single sub-event / market question to research."""
 
-    id: str = Field(description="Unique identifier for this sub-event")
+    id: Optional[str] = Field(
+        default=None,
+        description="Unique identifier for this sub-event. Auto-generated from title if not provided.",
+    )
     title: str = Field(
         description="The specific question, e.g. 'Will X happen by Y date?'"
     )
     description: Optional[str] = Field(
         default=None, description="Optional longer description or resolution criteria"
     )
+
+    @model_validator(mode="after")
+    def _auto_generate_id(self) -> SubEvent:
+        """Auto-generate an id from the title if none was provided."""
+        if self.id is None:
+            slug = re.sub(r"[^a-z0-9]+", "-", self.title.lower()).strip("-")
+            self.id = slug[:60]  # keep it reasonable length
+        return self
 
 
 class ResearchInput(BaseModel):

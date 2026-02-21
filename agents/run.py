@@ -23,24 +23,26 @@ from research_agent import AgentConfig, ResearchAgent, ResearchInput
 
 SAMPLE_INPUT = {
     "main_event": {
-        "title": "2028 US Presidential Election",
-        "description": "Who will win the 2028 US Presidential Election?",
+        "title": "US strikes Iran by...?",
+        "description": (
+            "This market will resolve to Yes if the US initiates a drone, "
+            "missile, or air strike on Iranian soil or any official Iranian "
+            "embassy or consulate."
+        ),
     },
     "sub_events": [
         {
-            "id": "dem-nominee-2028",
-            "title": "Who will be the 2028 Democratic Presidential Nominee?",
+            "title": "Khamenei out as Supreme Leader of Iran in 2026?",
             "description": (
-                "Which candidate will win the 2028 Democratic presidential "
-                "nomination?"
+                "Will Iran's Supreme Leader, Ali Khamenei, be removed from "
+                "power for any length of time by December 31, 2026?"
             ),
         },
         {
-            "id": "gop-nominee-2028",
-            "title": "Who will be the 2028 Republican Presidential Nominee?",
+            "title": "Khamenei out as Supreme Leader of Iran by June 30?",
             "description": (
-                "Which candidate will win the 2028 Republican presidential "
-                "nomination?"
+                "Will Iran's Supreme Leader, Ali Khamenei, be removed from "
+                "power for any length of time by June 30, 2026?"
             ),
         },
     ],
@@ -68,6 +70,13 @@ async def main() -> None:
         type=float,
         default=180.0,
         help="Total timeout in seconds",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="Path to write JSON output file (default: print to stdout)",
     )
     args = parser.parse_args()
 
@@ -101,7 +110,14 @@ async def main() -> None:
     result = await agent.run(research_input)
 
     # Output
-    print(result.model_dump_json(indent=2))
+    output_json = result.model_dump_json(indent=2)
+
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(output_json + "\n")
+        print(f"Results written to {args.output}", file=sys.stderr)
+    else:
+        print(output_json)
 
 
 if __name__ == "__main__":
