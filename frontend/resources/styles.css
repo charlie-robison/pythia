@@ -133,3 +133,400 @@ a {
   transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ---------- Markets Container ---------- */
+.markets-container {
+  @apply relative bg-surface-elevated rounded-3xl;
+}
+
+/* ---------- Market Card v2 (Polymarket-style grid card) ---------- */
+.market-card-v2 {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.market-card-v2:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- Bet Button (green outlined pill) ---------- */
+.bet-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: 6px 16px;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4ade80;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bet-button:hover {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.6);
+}
+
+.bet-button:active {
+  background: rgba(74, 222, 128, 0.15);
+}
+
+/* ---------- Bet Modal ---------- */
+.bet-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.bet-modal {
+  width: 100%;
+  max-width: 380px;
+  margin: 16px;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.bet-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.bet-input:focus {
+  border-color: rgba(74, 222, 128, 0.5);
+}
+
+.bet-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.quick-amount-btn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.quick-amount-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.place-bet-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: #4ade80;
+  color: #000;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.place-bet-btn:hover {
+  opacity: 0.9;
+}
+
+.place-bet-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.place-bet-btn--sell {
+  background: #f87171;
+}
+
+/* ---------- Event Card ---------- */
+.event-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.event-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.event-card--main {
+  padding: 24px;
+  border-color: rgba(74, 222, 128, 0.2);
+  background: rgba(74, 222, 128, 0.03);
+}
+
+.event-card--main:hover {
+  border-color: rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.06);
+}
+
+/* ---------- Analyze Button ---------- */
+.analyze-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 20px;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4ade80;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.analyze-button:hover {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.6);
+}
+
+.analyze-button:active {
+  background: rgba(74, 222, 128, 0.15);
+}
+
+/* ---------- Action Buttons (Buy/Sell/Hold) ---------- */
+.action-button--buy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: 6px 16px;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4ade80;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.action-button--buy:hover {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.6);
+}
+
+.action-button--sell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: 6px 16px;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f87171;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.action-button--sell:hover {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.6);
+}
+
+.action-button--hold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: 6px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.action-button--hold:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ---------- Category Badge ---------- */
+.category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ---------- Related Events Row ---------- */
+.related-events-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .related-events-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .related-events-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Event Analysis Grid ---------- */
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .analysis-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Price Chart ---------- */
+.price-chart-container {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.price-chart-container svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---------- Order Book ---------- */
+.order-book-container {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.order-book-header-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.order-book-label {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.order-book-label--ask {
+  color: #f87171;
+}
+
+.order-book-label--bid {
+  color: #4ade80;
+}
+
+.order-book-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  tabular-nums: true;
+  transition: background-color 0.1s ease;
+}
+
+.order-book-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.order-book-row--bid {
+  color: #4ade80;
+}
+
+.order-book-row--ask {
+  color: #f87171;
+}
+
+.order-book-spread {
+  text-align: center;
+  padding: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ---------- Line clamp utility ---------- */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

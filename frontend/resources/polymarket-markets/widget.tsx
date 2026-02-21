@@ -1,8 +1,7 @@
-import { McpUseProvider, useWidget, type WidgetMetadata } from "mcp-use/react";
+import { McpUseProvider, useWidget, useCallTool, type WidgetMetadata } from "mcp-use/react";
 import React, { useState } from "react";
 import "../styles.css";
 import { MarketCard } from "./components/MarketCard";
-import { MarketDetail } from "./components/MarketDetail";
 import { MarketsSkeleton } from "./components/MarketsSkeleton";
 import type { PolymarketMarketsProps } from "./types";
 import { propsSchema } from "./types";
@@ -20,23 +19,26 @@ export const widgetMetadata: WidgetMetadata = {
 
 type Props = PolymarketMarketsProps;
 
-type SortKey = "volume" | "liquidity" | "ending" | "price";
+interface BetState {
+  marketId: string;
+  marketTitle: string;
+  outcome: string;
+  price: number;
+  amount: string;
+}
 
 const PolymarketMarkets: React.FC = () => {
   const { props, isPending } = useWidget<Props>();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortKey>("volume");
-  const [filterCategory, setFilterCategory] = useState<string>("all");
-  const [search, setSearch] = useState("");
+  const { callTool: placeBet, isPending: isBetting } = useCallTool("place-bet");
+  const [bet, setBet] = useState<BetState | null>(null);
 
   if (isPending) {
     return (
       <McpUseProvider>
-        <div className="relative bg-surface-elevated border border-default rounded-3xl">
+        <div className="markets-container">
           <div className="p-6 pb-4">
-            <h5 className="text-secondary mb-1">Polymarket</h5>
-            <h2 className="heading-xl mb-3">Markets</h2>
-            <div className="h-5 w-48 rounded-md bg-default/10 animate-pulse" />
+            <h2 className="text-xl font-bold text-default mb-1">Top Markets</h2>
+            <div className="h-4 w-48 rounded-md bg-default/10 animate-pulse" />
           </div>
           <MarketsSkeleton />
         </div>
@@ -46,126 +48,130 @@ const PolymarketMarkets: React.FC = () => {
 
   const { markets, query, totalCount } = props;
 
-  const categories = [
-    "all",
-    ...Array.from(new Set(markets.map((m) => m.category))),
-  ];
+  const handleBet = (marketId: string, outcome: string, price: number) => {
+    const market = markets.find((m) => m.id === marketId);
+    if (!market) return;
+    setBet({
+      marketId,
+      marketTitle: market.title,
+      outcome,
+      price,
+      amount: "",
+    });
+  };
 
-  let filtered = markets;
+  const handlePlaceBet = () => {
+    if (!bet || !bet.amount || Number(bet.amount) <= 0) return;
+    placeBet(
+      {
+        marketId: bet.marketId,
+        outcome: bet.outcome,
+        amount: Number(bet.amount),
+      },
+      {
+        onSuccess: () => setBet(null),
+        onError: () => alert("Failed to place bet"),
+      }
+    );
+  };
 
-  if (filterCategory !== "all") {
-    filtered = filtered.filter((m) => m.category === filterCategory);
-  }
-
-  if (search) {
-    const q = search.toLowerCase();
-    filtered = filtered.filter((m) => m.title.toLowerCase().includes(q));
-  }
-
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === "volume") return b.volume - a.volume;
-    if (sortBy === "liquidity") return b.liquidity - a.liquidity;
-    if (sortBy === "ending")
-      return new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
-    if (sortBy === "price") {
-      const aYes = a.outcomes.find((o) => o.name === "Yes")?.price ?? 0;
-      const bYes = b.outcomes.find((o) => o.name === "Yes")?.price ?? 0;
-      return bYes - aYes;
-    }
-    return 0;
-  });
-
-  const selectedMarket = selectedId
-    ? markets.find((m) => m.id === selectedId)
-    : null;
+  const potentialPayout = bet && bet.amount && bet.price > 0
+    ? (Number(bet.amount) / bet.price).toFixed(2)
+    : "0.00";
 
   return (
     <McpUseProvider>
-      <div className="relative bg-surface-elevated border border-default rounded-3xl">
+      <div className="markets-container">
         {/* Header */}
-        <div className="p-6 pb-4">
-          <h5 className="text-secondary mb-1">Polymarket</h5>
-          <h2 className="heading-xl mb-1">Markets</h2>
-          <p className="text-sm text-secondary">
-            {query
-              ? `${totalCount} result${totalCount !== 1 ? "s" : ""} for "${query}"`
-              : `${totalCount} markets`}
-          </p>
-        </div>
-
-        {/* Search */}
-        <div className="px-6 mb-3">
-          <input
-            type="text"
-            placeholder="Filter markets..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-default bg-surface text-default placeholder:text-secondary/50 outline-none focus:border-info transition-colors"
-          />
-        </div>
-
-        {/* Category filters */}
-        <div className="px-6 mb-3 flex items-center gap-1.5 flex-wrap">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setFilterCategory(cat)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-                filterCategory === cat
-                  ? "bg-info/10 text-info"
-                  : "bg-surface text-secondary hover:bg-default/5"
-              }`}
-            >
-              {cat === "all" ? "All" : cat}
-            </button>
-          ))}
-        </div>
-
-        {/* Sort controls */}
-        <div className="px-6 mb-4 flex items-center gap-1.5">
-          <span className="text-xs text-secondary mr-1">Sort:</span>
-          {(
-            [
-              ["volume", "Volume"],
-              ["liquidity", "Liquidity"],
-              ["ending", "Ending Soon"],
-              ["price", "Yes Price"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setSortBy(key as SortKey)}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
-                sortBy === key
-                  ? "bg-info/10 text-info"
-                  : "bg-surface text-secondary hover:bg-default/5"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Market List */}
-        <div className="px-6 pb-2 space-y-2">
-          {sorted.map((market) => (
-            <MarketCard
-              key={market.id}
-              market={market}
-              isSelected={selectedId === market.id}
-              onSelect={setSelectedId}
-            />
-          ))}
-
-          {sorted.length === 0 && (
-            <div className="py-8 text-center text-secondary text-sm">
-              No markets match the current filters
-            </div>
+        <div className="px-6 pt-6 pb-4">
+          <h2 className="text-xl font-bold text-default">
+            {query ? `Results for "${query}"` : "Top Markets"}
+          </h2>
+          {totalCount > 0 && (
+            <p className="text-sm text-secondary mt-1">{totalCount} markets</p>
           )}
         </div>
 
-        {/* Detail Panel */}
-        {selectedMarket && <MarketDetail market={selectedMarket} />}
+        {/* Market Grid */}
+        <div className="px-6 pb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {markets.map((market) => (
+            <MarketCard key={market.id} market={market} onBet={handleBet} />
+          ))}
+        </div>
+
+        {markets.length === 0 && (
+          <div className="px-6 pb-6 text-center text-secondary text-sm">
+            No markets found
+          </div>
+        )}
+
+        {/* Bet Modal */}
+        {bet && (
+          <div className="bet-modal-overlay" onClick={() => setBet(null)}>
+            <div className="bet-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-default">Place Bet</h3>
+                <button
+                  onClick={() => setBet(null)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-default/10 text-secondary"
+                >
+                  &times;
+                </button>
+              </div>
+
+              <p className="text-sm text-secondary mb-1">{bet.marketTitle}</p>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#1a3a2a] text-[#4ade80]">
+                  {bet.outcome}
+                </span>
+                <span className="text-sm text-secondary">
+                  at {Math.round(bet.price * 100)}%
+                </span>
+              </div>
+
+              <label className="text-xs text-secondary mb-1.5 block">Amount ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={bet.amount}
+                onChange={(e) => setBet({ ...bet, amount: e.target.value })}
+                className="bet-input"
+                autoFocus
+              />
+
+              {/* Quick amount buttons */}
+              <div className="flex gap-2 mt-2 mb-4">
+                {[5, 10, 25, 50, 100].map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setBet({ ...bet, amount: String(amt) })}
+                    className="quick-amount-btn"
+                  >
+                    ${amt}
+                  </button>
+                ))}
+              </div>
+
+              {/* Payout info */}
+              <div className="flex items-center justify-between py-3 border-t border-[#333] mb-4">
+                <span className="text-xs text-secondary">Potential payout</span>
+                <span className="text-sm font-bold text-[#4ade80]">
+                  ${potentialPayout}
+                </span>
+              </div>
+
+              <button
+                onClick={handlePlaceBet}
+                disabled={isBetting || !bet.amount || Number(bet.amount) <= 0}
+                className="place-bet-btn"
+              >
+                {isBetting ? "Placing bet..." : "Place Bet"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </McpUseProvider>
   );
