@@ -47,6 +47,10 @@ try:
     chroma_client.delete_collection("polymarket_markets")
 except Exception:
     pass
+try:
+    chroma_client.delete_collection("polymarket_events")
+except Exception:
+    pass
 
 collection = chroma_client.get_or_create_collection(
     name="polymarket_events",
